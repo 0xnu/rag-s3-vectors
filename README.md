@@ -6,6 +6,9 @@
 
 A system using [Amazon S3 Vectors](https://aws.amazon.com/s3/features/vectors/) and [Amazon Bedrock](https://aws.amazon.com/bedrock/) to create a [RAG](https://en.wikipedia.org/wiki/Retrieval-augmented_generation) (Retrieval-Augmented Generation) system for Shakespearean plays. The system is designed to answer questions about the plays based on the text and embeddings stored in the vector database.
 
+> [!NOTE]
+> [I am available](mailto:f@finbarrs.eu) for consultations on AI and RAG.
+
 ### Prerequisite
 
 Here are the steps to deploy your Shakespeare RAG system:
