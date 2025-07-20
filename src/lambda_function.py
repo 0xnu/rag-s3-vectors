@@ -1,0 +1,160 @@
+import json
+import os
+import boto3
+from langchain_aws.embeddings import BedrockEmbeddings
+
+VECTOR_BUCKET_NAME = os.environ["VECTOR_BUCKET_NAME"]
+VECTOR_INDEX_NAME = os.environ["VECTOR_INDEX_NAME"]
+
+
+def query_vectors(question: str) -> list:
+    """Query S3 Vectors for similar documents."""
+    
+    # Initialize Bedrock client and embedding model
+    bedrock_client = boto3.client("bedrock-runtime", "us-east-1")
+    embedding_model = BedrockEmbeddings(
+        client=bedrock_client,
+        model_id="amazon.titan-embed-text-v2:0",
+    )
+    
+    # Generate embedding for the question
+    embedding = embedding_model.embed_query(question)
+    
+    # Query S3 Vectors
+    s3vectors_client = boto3.client("s3vectors", "us-east-1")
+    response = s3vectors_client.query_vectors(
+        vectorBucketName=VECTOR_BUCKET_NAME,
+        indexName=VECTOR_INDEX_NAME,
+        queryVector={
+            "float32": embedding,
+        },
+        topK=3,
+        returnMetadata=True,
+        returnDistance=True,
+    )
+    
+    return response["vectors"]
+
+
+def generate_response(question: str, context_docs: list) -> str:
+    """Generate response using Amazon Titan Text via direct Bedrock API."""
+    
+    # Format documents as simple text context
+    context_text = "\n\n".join([
+        f"Document {i+1}:\n{doc['metadata']['text']}"
+        for i, doc in enumerate(context_docs)
+    ])
+    
+    # Create the prompt for Titan Text
+    system_prompt = (
+        "You are a chatbot that answers questions about Shakespeare's Hamlet. "
+        "Generate responses based on the content in the reference documents provided. "
+        "If the documents don't contain relevant information, say so politely. "
+        "Provide detailed, thoughtful responses based on the Shakespearean content."
+    )
+    
+    user_prompt = f"Reference Documents:\n{context_text}\n\nQuestion: {question}"
+    
+    # Combine system and user prompts
+    full_prompt = f"{system_prompt}\n\nHuman: {user_prompt}\n\nAssistant:"
+    
+    # Use direct Bedrock API call instead of LangChain
+    bedrock_client = boto3.client("bedrock-runtime", "us-east-1")
+    
+    # Prepare the request body for Titan Text
+    request_body = {
+        "inputText": full_prompt,
+        "textGenerationConfig": {
+            "temperature": 0.3,
+            "topP": 0.9,
+            "maxTokenCount": 1000
+        }
+    }
+    
+    # Call Bedrock directly
+    response = bedrock_client.invoke_model(
+        modelId="amazon.titan-text-premier-v1:0",
+        contentType="application/json",
+        accept="application/json",
+        body=json.dumps(request_body)
+    )
+    
+    # Parse the response
+    response_body = json.loads(response["body"].read())
+    
+    # Titan Text response format: get the generated text
+    if "results" in response_body and len(response_body["results"]) > 0:
+        generated_text = response_body["results"][0]["outputText"].strip()
+    else:
+        # Fallback if response format is different
+        generated_text = str(response_body.get("outputText", "No response generated"))
+    
+    return generated_text
+
+
+def create_response(status_code: int, body_dict: dict) -> dict:
+    """Create a standardized Lambda response."""
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Methods": "POST, OPTIONS"
+        },
+        "body": json.dumps(body_dict, ensure_ascii=False)
+    }
+
+
+def handler(event, context):
+    """Main Lambda handler for RAG queries."""
+    
+    try:
+        # Parse request body
+        if isinstance(event.get("body"), str):
+            request = json.loads(event["body"])
+        else:
+            request = event.get("body", {})
+        
+        question = request.get("question")
+        if not question:
+            return create_response(400, {"error": "Question parameter is required"})
+        
+        print(f"Processing question: {question}")
+        
+        # Query vectors for similar documents
+        context_docs = query_vectors(question)
+        print(f"Found {len(context_docs)} similar documents")
+        
+        # Generate response using the context
+        answer = generate_response(question, context_docs)
+        print(f"Generated response: {answer[:100]}...")
+        
+        # Create sources list safely
+        sources = []
+        for doc in context_docs:
+            try:
+                source = {
+                    "title": doc["metadata"].get("title", "Unknown"),
+                    "distance": float(doc.get("distance", 0.0))
+                }
+                sources.append(source)
+            except (KeyError, TypeError, ValueError) as e:
+                print(f"Error processing source: {e}")
+                continue
+        
+        response_body = {
+            "answer": answer,
+            "sources": sources
+        }
+        
+        return create_response(200, response_body)
+        
+    except Exception as e:
+        print(f"Error in handler: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        return create_response(500, {
+            "error": f"Internal server error: {str(e)}"
+        })

@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: S3 Vectors RAG System with Shakespearean Content
+
+Parameters:
+  VectorBucketName:
+    Type: String
+    Description: Name of the S3 Vector bucket
+    Default: my-rag-vector-bucket
+  
+  VectorIndexName:
+    Type: String
+    Description: Name of the vector index
+    Default: hamlet-shakespeare-index
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.11
+    Environment:
+      Variables:
+        VECTOR_BUCKET_NAME: !Ref VectorBucketName
+        VECTOR_INDEX_NAME: !Ref VectorIndexName
+
+Resources:
+  # Lambda function for RAG queries
+  RAGFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-rag-function"
+      CodeUri: src/
+      Handler: lambda_function.handler
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: 
+              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-text-premier-v1:0"
+          - Effect: Allow
+            Action:
+              - s3vectors:QueryVectors
+              - s3vectors:GetVectors
+            Resource: 
+              - !Sub "arn:aws:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${VectorBucketName}"
+              - !Sub "arn:aws:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${VectorBucketName}/index/${VectorIndexName}"
+      Events:
+        RAGApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RAGApi
+            Path: /query
+            Method: post
+
+  # Lambda function for vector creation (manual trigger)
+  VectorCreationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-vector-creation"
+      CodeUri: src/
+      Handler: create_index.handler
+      Timeout: 900
+      MemorySize: 1024
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+            Resource: 
+              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+          - Effect: Allow
+            Action:
+              - s3vectors:PutVectors
+              - s3vectors:CreateIndex
+              - s3vectors:DescribeIndex
+            Resource: 
+              - !Sub "arn:aws:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${VectorBucketName}"
+              - !Sub "arn:aws:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${VectorBucketName}/index/${VectorIndexName}"
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource: 
+              - !Sub "arn:aws:s3:::${VectorBucketName}"
+              - !Sub "arn:aws:s3:::${VectorBucketName}/*"
+
+  # API Gateway
+  RAGApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-rag-api"
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST, OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      DefinitionBody:
+        openapi: 3.0.1
+        info:
+          title: Shakespeare RAG API
+          description: Query Shakespearean content using S3 Vectors RAG system
+          version: 1.0.0
+        paths:
+          /query:
+            post:
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      properties:
+                        question:
+                          type: string
+                          description: Question about Shakespearean content (Hamlet)
+                          example: "What was Hamlet's relationship with Ophelia?"
+                      required:
+                        - question
+              responses:
+                '200':
+                  description: Successful response
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          answer:
+                            type: string
+                            description: Generated response based on Shakespearean content
+                          sources:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                title:
+                                  type: string
+                                distance:
+                                  type: number
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RAGFunction.Arn}/invocations"
+
+  # CloudWatch Log Groups
+  RAGFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${RAGFunction}"
+      RetentionInDays: 7
+
+  VectorCreationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${VectorCreationFunction}"
+      RetentionInDays: 7
+
+Outputs:
+  RAGApiUrl:
+    Description: "API Gateway endpoint URL for Shakespeare RAG queries"
+    Value: !Sub "https://${RAGApi}.execute-api.${AWS::Region}.amazonaws.com/prod/query"
+    Export:
+      Name: !Sub "${AWS::StackName}-api-url"
+  
+  VectorCreationFunction:
+    Description: "Lambda function name for vector creation"
+    Value: !Ref VectorCreationFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-vector-function"
+      
+  RAGFunction:
+    Description: "Lambda function name for RAG queries"
+    Value: !Ref RAGFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-rag-function"
