@@ -163,7 +163,7 @@ This project is licensed under the [Modified MIT License](./LICENSE).
 ### Citation
 
 ```tex
-@misc{llmbenchmark,
+@misc{rags3vectors,
   author       = {Oketunji, A.F.},
   title        = {RAG S3 Vectors},
   year         = 2025,
