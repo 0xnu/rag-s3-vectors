@@ -70,6 +70,9 @@ aws s3vectors delete-vector-bucket --vector-bucket-name "shakespeare-rag-vector-
 You can now test the system locally with Shakespearean queries:
 
 ```sh
+# Create searchable vector indexes
+python3 -m src.create_index
+
 # Test embedding generation
 python3 -m src.query --test-embeddings
 
@@ -80,25 +83,83 @@ python3 -m src.query -q "Tell me about Hamlet's relationship with Ophelia"
 python3 -m src.query
 ```
 
+#### Successful Response
+
+```sh
+# Query with command line arguments
+# python3 -m src.query -q "Tell me about Hamlet's relationship with Ophelia"
+
+🔍 Searching for: Tell me about Hamlet's relationship with Ophelia
+📦 Vector Bucket: shakespeare-rag-vector-bucket
+📊 Index: hamlet-shakespeare-index
+--------------------------------------------------
+🧠 Generating embedding...
+✅ Embedding generated (dimension: 1024)
+🔎 Querying vectors...
+✅ Found 3 similar documents
+==================================================
+📄 Result 1
+   Title: Hamlet
+   Distance: 0.4494
+   Key: 6a2b5596-7779-440e-b6a9-48c8c4c3aa4a
+   Text Preview: ## Act II - The Prince's Feigned Madness
+    
+    To better observe the court and plan his revenge, Hamlet assumes an antic disposition, speaking in riddles and behaving as one touched by lunacy. His ...
+--------------------------------------------------
+📄 Result 2
+   Title: Hamlet
+   Distance: 0.4531
+   Key: 96f6c17f-94ea-411e-a532-26c220fb0bb7
+   Text Preview: As the players enact the poisoning scene, Claudius rises in evident guilt and storms from the hall, confirming Hamlet's suspicions. The king's reaction provides the proof that Hamlet sought - Claudius...
+--------------------------------------------------
+📄 Result 3
+   Title: Hamlet
+   Distance: 0.6805
+   Key: f4ebd68d-cda8-4c3b-9bad-66b57ca31c05
+   Text Preview: # The Chronicle of Hamlet, Prince of Denmark
+--------------------------------------------------
+📊 Distance Statistics:
+   Best Match: 0.4494
+   Worst Match: 0.6805
+   Average: 0.5277
+```
+
 ### Testing API
 
 Once deployed, test with Shakespearean queries:
 
 ```sh
-curl -X POST "https://5hbsiaq1c4.execute-api.us-east-1.amazonaws.com/prod/query" \
+# 1. Basic cURL example
+curl -X POST \
+  https://koypyeq0db.execute-api.us-east-1.amazonaws.com/prod/query \
   -H "Content-Type: application/json" \
-  -d '{"question": "How did Ophelia go mad?"}'
+  -H "x-api-key: shakespeare-rag-system-410960877651-shakespeare-key" \
+  -d '{
+    "question": "Tell me about Hamlet'\''s relationship with Ophelia"
+  }'
 
-#### Example Shakespearean Test Queries
-"What was the play within the play about?"
-"Tell me about Hamlet'\''s feigned madness"
-"What happened in the final duel?"
+# 2. Example with invalid API key (should return 403)
+curl -X POST \
+  https://koypyeq0db.execute-api.us-east-1.amazonaws.com/prod/query \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: invalid-key" \
+  -d '{
+    "question": "Tell me about Hamlet'\''s relationship with Ophelia"
+  }'
+
+# 3. Example without API key (should return 403)
+curl -X POST \
+  https://koypyeq0db.execute-api.us-east-1.amazonaws.com/prod/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Tell me about Hamlet'\''s relationship with Ophelia"
+  }'
 ```
 
-#### Response
+#### Successful API Response
 
 ```json
-{"answer": "Ophelia goes mad due to her father's death and Hamlet's behavior towards her.", "sources": []}%
+{"answer": "Hamlet and Ophelia have a complex relationship. Initially, Hamlet appears to be in love with Ophelia, but he later rejects her due to his feigned madness and his mistrust of women. Ophelia, who genuinely loves Hamlet, is deeply hurt by his rejection and his harsh words, which contribute to her descent into madness and eventual death.", "sources": [{"title": "Hamlet", "distance": 0.44943636655807495, "relevance_score": 0.551}, {"title": "Hamlet", "distance": 0.4530506134033203, "relevance_score": 0.547}, {"title": "Hamlet", "distance": 0.6805402040481567, "relevance_score": 0.319}], "metadata": {"question_length": 48, "sources_found": 3, "processing_successful": true}}%
 ```
 
 ### Vector Database Pricing Comparison 2025

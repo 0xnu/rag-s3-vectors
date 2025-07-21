@@ -92,14 +92,34 @@ def generate_response(question: str, context_docs: list) -> str:
     return generated_text
 
 
+def validate_api_key(event: dict) -> tuple[bool, str]:
+    """Validate API key from request headers."""
+    
+    # Extract API key from headers
+    headers = event.get("headers", {})
+    
+    # API Gateway passes headers in lowercase
+    api_key = headers.get("x-api-key") or headers.get("X-Api-Key")
+    
+    if not api_key:
+        return False, "Missing API key in request headers"
+    
+    # Log API key usage (first 8 characters only for security)
+    print(f"API key used: {api_key[:8]}...")
+    
+    # Note: API Gateway handles actual key validation
+    # This function is for additional logging/monitoring
+    return True, "Valid API key"
+
+
 def create_response(status_code: int, body_dict: dict) -> dict:
-    """Create a standardized Lambda response."""
+    """Create a standardised Lambda response."""
     return {
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Headers": "Content-Type,X-Api-Key",
             "Access-Control-Allow-Methods": "POST, OPTIONS"
         },
         "body": json.dumps(body_dict, ensure_ascii=False)
@@ -107,9 +127,23 @@ def create_response(status_code: int, body_dict: dict) -> dict:
 
 
 def handler(event, context):
-    """Main Lambda handler for RAG queries."""
+    """Main Lambda handler for RAG queries with API key authentication."""
     
     try:
+        # Log request details for monitoring
+        print(f"Received event: {json.dumps(event, default=str)}")
+        
+        # Handle CORS preflight requests
+        if event.get("httpMethod") == "OPTIONS":
+            return create_response(200, {"message": "CORS preflight response"})
+        
+        # Validate API key (for additional monitoring)
+        is_valid, validation_message = validate_api_key(event)
+        if not is_valid:
+            print(f"API key validation failed: {validation_message}")
+            # Note: API Gateway should have already blocked invalid keys
+            # This is additional logging for monitoring purposes
+        
         # Parse request body
         if isinstance(event.get("body"), str):
             request = json.loads(event["body"])
@@ -118,13 +152,33 @@ def handler(event, context):
         
         question = request.get("question")
         if not question:
-            return create_response(400, {"error": "Question parameter is required"})
+            return create_response(400, {
+                "error": "Question parameter is required",
+                "usage": "Send POST request with JSON body containing 'question' field"
+            })
+        
+        # Validate question length
+        if len(question.strip()) < 3:
+            return create_response(400, {
+                "error": "Question must be at least 3 characters long"
+            })
+        
+        if len(question) > 500:
+            return create_response(400, {
+                "error": "Question must be less than 500 characters"
+            })
         
         print(f"Processing question: {question}")
         
         # Query vectors for similar documents
         context_docs = query_vectors(question)
         print(f"Found {len(context_docs)} similar documents")
+        
+        if not context_docs:
+            return create_response(200, {
+                "answer": "I couldn't find relevant information about your question in my knowledge base. Please try rephrasing your question about Hamlet.",
+                "sources": []
+            })
         
         # Generate response using the context
         answer = generate_response(question, context_docs)
@@ -136,7 +190,8 @@ def handler(event, context):
             try:
                 source = {
                     "title": doc["metadata"].get("title", "Unknown"),
-                    "distance": float(doc.get("distance", 0.0))
+                    "distance": float(doc.get("distance", 0.0)),
+                    "relevance_score": round(1.0 - float(doc.get("distance", 0.0)), 3)
                 }
                 sources.append(source)
             except (KeyError, TypeError, ValueError) as e:
@@ -145,10 +200,21 @@ def handler(event, context):
         
         response_body = {
             "answer": answer,
-            "sources": sources
+            "sources": sources,
+            "metadata": {
+                "question_length": len(question),
+                "sources_found": len(context_docs),
+                "processing_successful": True
+            }
         }
         
         return create_response(200, response_body)
+        
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {str(e)}")
+        return create_response(400, {
+            "error": "Invalid JSON in request body"
+        })
         
     except Exception as e:
         print(f"Error in handler: {str(e)}")
@@ -156,5 +222,6 @@ def handler(event, context):
         traceback.print_exc()
         
         return create_response(500, {
-            "error": f"Internal server error: {str(e)}"
+            "error": "Internal server error occurred",
+            "support": "Please contact support if this persists"
         })
