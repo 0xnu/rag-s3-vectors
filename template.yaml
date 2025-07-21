@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: S3 Vectors RAG System with Shakespearean Content and API Key Authentication
+Description: S3 Vectors RAG System with Shakespearean Content and Secure API Key Authentication
 
 Parameters:
   VectorBucketName:
@@ -29,6 +29,22 @@ Globals:
         VECTOR_INDEX_NAME: !Ref VectorIndexName
 
 Resources:
+  # Custom Resource Lambda for API Key Generation
+  ApiKeyGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-api-key-generator"
+      CodeUri: src/
+      Handler: api_key_generator.handler
+      Runtime: python3.11
+      Timeout: 60
+
+  # Custom Resource to generate API key
+  GenerateApiKey:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt ApiKeyGeneratorFunction.Arn
+
   # Lambda function for RAG queries
   RAGFunction:
     Type: AWS::Serverless::Function
@@ -178,18 +194,20 @@ Resources:
                 httpMethod: POST
                 uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RAGFunction.Arn}/invocations"
 
-  # API Key for authentication
+  # API Key with random generated value
   ShakespeareRAGApiKey:
     Type: AWS::ApiGateway::ApiKey
     Properties:
       Name: !Ref ApiKeyName
       Description: API Key for Shakespeare RAG System
       Enabled: true
-      Value: !Sub "${AWS::StackName}-${AWS::AccountId}-shakespeare-key"
+      Value: !GetAtt GenerateApiKey.ApiKey
 
-  # Usage Plan to control API access
+  # Usage Plan to control API access - with explicit dependency
   RAGUsagePlan:
     Type: AWS::ApiGateway::UsagePlan
+    DependsOn: 
+      - RAGApiprodStage
     Properties:
       UsagePlanName: !Sub "${AWS::StackName}-usage-plan"
       Description: Usage plan for Shakespeare RAG API
@@ -206,6 +224,9 @@ Resources:
   # Link API Key to Usage Plan
   RAGUsagePlanKey:
     Type: AWS::ApiGateway::UsagePlanKey
+    DependsOn: 
+      - RAGUsagePlan
+      - ShakespeareRAGApiKey
     Properties:
       KeyId: !Ref ShakespeareRAGApiKey
       KeyType: API_KEY
@@ -224,6 +245,12 @@ Resources:
       LogGroupName: !Sub "/aws/lambda/${VectorCreationFunction}"
       RetentionInDays: 7
 
+  ApiKeyGeneratorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ApiKeyGeneratorFunction}"
+      RetentionInDays: 7
+
 Outputs:
   RAGApiUrl:
     Description: "API Gateway endpoint URL for Shakespeare RAG queries"
@@ -238,8 +265,8 @@ Outputs:
       Name: !Sub "${AWS::StackName}-api-key-id"
 
   ApiKeyValue:
-    Description: "API Key value for authentication (store securely)"
-    Value: !Sub "${AWS::StackName}-${AWS::AccountId}-shakespeare-key"
+    Description: "Generated random API Key value (store securely)"
+    Value: !GetAtt GenerateApiKey.ApiKey
     Export:
       Name: !Sub "${AWS::StackName}-api-key-value"
   

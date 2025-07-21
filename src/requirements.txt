@@ -1,4 +1,5 @@
 boto3
+cfnresponse
 langchain-aws
 langchain-core
 langchain-text-splitters

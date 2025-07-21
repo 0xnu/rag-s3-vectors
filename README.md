@@ -101,27 +101,31 @@ python3 -m src.query
 📄 Result 1
    Title: Hamlet
    Distance: 0.4494
-   Key: 6a2b5596-7779-440e-b6a9-48c8c4c3aa4a
+   Key: b77cbc83-6760-49ff-bc60-b0f5be479e0c
    Text Preview: ## Act II - The Prince's Feigned Madness
     
     To better observe the court and plan his revenge, Hamlet assumes an antic disposition, speaking in riddles and behaving as one touched by lunacy. His ...
 --------------------------------------------------
 📄 Result 2
    Title: Hamlet
-   Distance: 0.4531
-   Key: 96f6c17f-94ea-411e-a532-26c220fb0bb7
-   Text Preview: As the players enact the poisoning scene, Claudius rises in evident guilt and storms from the hall, confirming Hamlet's suspicions. The king's reaction provides the proof that Hamlet sought - Claudius...
+   Distance: 0.4494
+   Key: 4c93c8fd-a6d8-4171-898a-7a1b014822b2
+   Text Preview: ## Act II - The Prince's Feigned Madness
+    
+    To better observe the court and plan his revenge, Hamlet assumes an antic disposition, speaking in riddles and behaving as one touched by lunacy. His ...
 --------------------------------------------------
 📄 Result 3
    Title: Hamlet
-   Distance: 0.6805
-   Key: f4ebd68d-cda8-4c3b-9bad-66b57ca31c05
-   Text Preview: # The Chronicle of Hamlet, Prince of Denmark
+   Distance: 0.4494
+   Key: 6a2b5596-7779-440e-b6a9-48c8c4c3aa4a
+   Text Preview: ## Act II - The Prince's Feigned Madness
+    
+    To better observe the court and plan his revenge, Hamlet assumes an antic disposition, speaking in riddles and behaving as one touched by lunacy. His ...
 --------------------------------------------------
 📊 Distance Statistics:
    Best Match: 0.4494
-   Worst Match: 0.6805
-   Average: 0.5277
+   Worst Match: 0.4494
+   Average: 0.4494
 ```
 
 ### Testing API
@@ -131,16 +135,16 @@ Once deployed, test with Shakespearean queries:
 ```sh
 # 1. Basic cURL example
 curl -X POST \
-  https://koypyeq0db.execute-api.us-east-1.amazonaws.com/prod/query \
+  https://6y3pc5k09e.execute-api.us-east-1.amazonaws.com/prod/query \
   -H "Content-Type: application/json" \
-  -H "x-api-key: shakespeare-rag-system-410960877651-shakespeare-key" \
+  -H "x-api-key: 8uNAa2dWzx3U5EasnC9HhfldaTjoXgLe" \
   -d '{
     "question": "Tell me about Hamlet'\''s relationship with Ophelia"
   }'
 
 # 2. Example with invalid API key (should return 403)
 curl -X POST \
-  https://koypyeq0db.execute-api.us-east-1.amazonaws.com/prod/query \
+  https://6y3pc5k09e.execute-api.us-east-1.amazonaws.com/prod/query \
   -H "Content-Type: application/json" \
   -H "x-api-key: invalid-key" \
   -d '{
@@ -149,7 +153,7 @@ curl -X POST \
 
 # 3. Example without API key (should return 403)
 curl -X POST \
-  https://koypyeq0db.execute-api.us-east-1.amazonaws.com/prod/query \
+  https://6y3pc5k09e.execute-api.us-east-1.amazonaws.com/prod/query \
   -H "Content-Type: application/json" \
   -d '{
     "question": "Tell me about Hamlet'\''s relationship with Ophelia"
@@ -159,7 +163,33 @@ curl -X POST \
 #### Successful API Response
 
 ```json
-{"answer": "Hamlet and Ophelia have a complex relationship. Initially, Hamlet appears to be in love with Ophelia, but he later rejects her due to his feigned madness and his mistrust of women. Ophelia, who genuinely loves Hamlet, is deeply hurt by his rejection and his harsh words, which contribute to her descent into madness and eventual death.", "sources": [{"title": "Hamlet", "distance": 0.44943636655807495, "relevance_score": 0.551}, {"title": "Hamlet", "distance": 0.4530506134033203, "relevance_score": 0.547}, {"title": "Hamlet", "distance": 0.6805402040481567, "relevance_score": 0.319}], "metadata": {"question_length": 48, "sources_found": 3, "processing_successful": true}}%
+{
+  "answer": "Hamlet's relationship with Ophelia is a complex one. Initially, Hamlet appears to be in love with Ophelia, but after his father's death, he becomes distant and cruel towards her. In Act II, Hamlet tells Ophelia to \"get thee to a nunnery,\" which is a harsh and hurtful thing to say. However, it's important to note that Hamlet is feigning madness at this point, and his harsh words may be a way of protecting Ophelia from the corruption of the court. Ophelia is deeply affected by Hamlet's behavior and eventually goes mad with grief after her father's death.",
+  "sources": [
+    {
+      "title": "Hamlet",
+      "distance": 0.44943636655807495,
+      "relevance_score": 0.551
+    },
+    {
+      "title": "Hamlet",
+      "distance": 0.44943636655807495,
+      "relevance_score": 0.551
+    },
+    {
+      "title": "Hamlet",
+      "distance": 0.44943636655807495,
+      "relevance_score": 0.551
+      }
+    ],
+    "metadata": {
+      "question_length": 48,
+      "sources_found": 3,
+      "processing_successful": true,
+      "timestamp": "2025-07-21T22:13:42.347218+00:00",
+      "request_id": "4cd6cfe9-a0fa-4ca9-aeb5-9812222bc58f"
+    }
+}%
 ```
 
 ### Vector Database Pricing Comparison 2025
@@ -225,10 +255,10 @@ This project is licensed under the [Modified MIT License](./LICENSE).
   author       = {Oketunji, A.F.},
   title        = {RAG S3 Vectors},
   year         = 2025,
-  version      = {0.0.1},
+  version      = {0.0.3},
   publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.16203571},
-  url          = {https://doi.org/10.5281/zenodo.16203571}
+  doi          = {10.5281/zenodo.16291024},
+  url          = {https://doi.org/10.5281/zenodo.16291024}
 }
 ```
 
