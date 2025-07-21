@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: S3 Vectors RAG System with Shakespearean Content
+Description: S3 Vectors RAG System with Shakespearean Content and API Key Authentication
 
 Parameters:
   VectorBucketName:
@@ -12,6 +12,11 @@ Parameters:
     Type: String
     Description: Name of the vector index
     Default: hamlet-shakespeare-index
+
+  ApiKeyName:
+    Type: String
+    Description: Name for the API key
+    Default: shakespeare-rag-api-key
 
 Globals:
   Function:
@@ -87,12 +92,13 @@ Resources:
               - !Sub "arn:aws:s3:::${VectorBucketName}"
               - !Sub "arn:aws:s3:::${VectorBucketName}/*"
 
-  # API Gateway
+  # API Gateway with API Key authentication
   RAGApi:
     Type: AWS::Serverless::Api
     Properties:
       Name: !Sub "${AWS::StackName}-rag-api"
       StageName: prod
+      ApiKeySourceType: HEADER
       Cors:
         AllowMethods: "'POST, OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
@@ -101,11 +107,19 @@ Resources:
         openapi: 3.0.1
         info:
           title: Shakespeare RAG API
-          description: Query Shakespearean content using S3 Vectors RAG system
+          description: Query Shakespearean content using S3 Vectors RAG system with API Key authentication
           version: 1.0.0
+        components:
+          securitySchemes:
+            ApiKeyAuth:
+              type: apiKey
+              in: header
+              name: x-api-key
         paths:
           /query:
             post:
+              security:
+                - ApiKeyAuth: []
               requestBody:
                 required: true
                 content:
@@ -139,10 +153,63 @@ Resources:
                                   type: string
                                 distance:
                                   type: number
+                '401':
+                  description: Unauthorised - Invalid or missing API key
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                            example: "Forbidden"
+                '403':
+                  description: Forbidden - API key quota exceeded
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                            example: "Forbidden"
               x-amazon-apigateway-integration:
                 type: aws_proxy
                 httpMethod: POST
                 uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RAGFunction.Arn}/invocations"
+
+  # API Key for authentication
+  ShakespeareRAGApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Name: !Ref ApiKeyName
+      Description: API Key for Shakespeare RAG System
+      Enabled: true
+      Value: !Sub "${AWS::StackName}-${AWS::AccountId}-shakespeare-key"
+
+  # Usage Plan to control API access
+  RAGUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub "${AWS::StackName}-usage-plan"
+      Description: Usage plan for Shakespeare RAG API
+      Throttle:
+        RateLimit: 100        # 100 requests per second
+        BurstLimit: 200       # Burst up to 200 requests
+      Quota:
+        Limit: 10000          # 10,000 requests per month
+        Period: MONTH
+      ApiStages:
+        - ApiId: !Ref RAGApi
+          Stage: prod
+
+  # Link API Key to Usage Plan
+  RAGUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ShakespeareRAGApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref RAGUsagePlan
 
   # CloudWatch Log Groups
   RAGFunctionLogGroup:
@@ -164,6 +231,18 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-api-url"
   
+  ApiKeyId:
+    Description: "API Key ID for authentication"
+    Value: !Ref ShakespeareRAGApiKey
+    Export:
+      Name: !Sub "${AWS::StackName}-api-key-id"
+
+  ApiKeyValue:
+    Description: "API Key value for authentication (store securely)"
+    Value: !Sub "${AWS::StackName}-${AWS::AccountId}-shakespeare-key"
+    Export:
+      Name: !Sub "${AWS::StackName}-api-key-value"
+  
   VectorCreationFunction:
     Description: "Lambda function name for vector creation"
     Value: !Ref VectorCreationFunction
@@ -175,3 +254,9 @@ Outputs:
     Value: !Ref RAGFunction
     Export:
       Name: !Sub "${AWS::StackName}-rag-function"
+
+  UsagePlanId:
+    Description: "Usage Plan ID for monitoring and management"
+    Value: !Ref RAGUsagePlan
+    Export:
+      Name: !Sub "${AWS::StackName}-usage-plan-id"
